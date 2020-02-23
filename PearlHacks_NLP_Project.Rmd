@@ -1,0 +1,365 @@
+---
+title: "Conversations and Attitudes About Mental Health in Twitter Discourse"
+author: "Payal Sen, Harshitha Shabad"
+date: "2/23/2020"
+output: html_document
+---
+### Problem Description:
+
+**What mental health topics do people discuss on Twitter?**
+**Twitter data to analyse mental health issues.** 
+
+Libraries used
+```{r message=FALSE, warning=FALSE}
+#install.packages("textdata")
+library(textdata)
+library(dplyr)
+library(tidyverse)
+library(tidytext)
+library(stringr)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+library(RColorBrewer)
+library(ggthemes)
+library(wordcloud)
+library(reshape2)
+library(ggmap)
+library(rtweet)
+```
+
+
+Read the dataset
+
+In order to capture Twitter data, we had to follow the next steps:
+
+1. We needed a Twitter application and hence created a Twitter developer account.
+
+2. After registration, we grabbed our API keys and access tokens from Twitter: Consumer Key, Consumer Secret, Access Token and Access Token Secret.
+
+3. Install rtweet package in RStudio environment.
+
+4. Ran the following script with the API keys and access tokens as input parameters.
+
+5. The hashtags considered for this analysis are as following:
+* **#mentalhealth** ,
+* **#depression** ,
+* **#worldmentalhealthday** ,
+* **#WMHD**,
+* **#nostigma** ,
+* **#nostigmas** , 
+* **#eatingdisorders**, 
+* **#suicide**, 
+* **#ptsd**,
+* **#mentalhealthawareness**,
+* **#mentalillness**,
+* **#stopsuicide**, 
+* **#IAmStigmaFree**, 
+* **#suicideprevention**, 
+* **#MH**, 
+* **#addiction**, 
+* **#bipolar**,
+* **#stigma**
+
+5. We were able to download almost 18K records on a single try.
+
+```{r message=FALSE, warning=FALSE}
+##app_name <- "pearlhack2020_twitter_app"
+##consumer_key <- "VTXJmEplfjEWN2PLeMw2IeEVO"
+##consumer_secret <- "DKRJgWmeXWUFnRPxKnLYmhtfTem6kWUVW9WYH2IbzTqFQdazWE"
+
+## create token
+##token <- create_token(app_name, consumer_key, consumer_secret)
+
+##terms <- c("#mentalhealth" ,"#depression" ,"#worldmentalhealthday" ,"#WMHD", "#nostigma" ,
+##           "#nostigmas" , "#eatingdisorders", "#suicide", "#ptsd", "#mentalhealthawareness",
+##           "#mentalillness","#stopsuicide", "#IAmStigmaFree", "#suicideprevention", "#MH", "#addiction", 
+##           "#bipolar", "#stigma")
+
+##terms_search <- paste(terms, collapse = " OR ")
+
+##mh_data <- search_tweets(terms_search, n=20000, lang="en", retryonratelimit = TRUE)
+
+
+##write.csv(mh_tweets,"c:/Users/psen2/Desktop/PearlHacks/Final_Project/tweets.csv", 
+##         append=T, row.names=F, col.names=T,  sep=",")
+tweets_df = read_csv('tweets.csv')
+names(tweets_df)
+```
+
+
+### Data Cleaning
+ 
+* Removed unneccessary columns  
+* Removed html tags and mental health tags
+
+```{r message=FALSE, warning=FALSE}
+tweets_df = tweets_df %>% 
+  mutate(text = str_replace_all(text, "(<br />)+", " "),
+         text = str_replace_all(text, "@", ""),
+         text = str_replace_all(text, "mentalhealth", ""),
+         text = str_replace_all(text, "t.co", ""),
+         text = str_replace_all(text, "http", "")) %>%
+  select(user_id, created_at,text,country,country_code)
+
+names(tweets_df)
+```
+
+### Tokenization
+
+* Turning the text into tokens
+
+```{r message=FALSE, warning=FALSE}
+tokens <- tweets_df %>%
+  unnest_tokens(output = word, input = text)
+
+kable(head(tokens)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left",
+                fixed_thead = T)
+```
+### Show common words
+* We can see that 's','to','u','the','and', 'a' are the 6 most common words
+
+```{r message=FALSE, warning=FALSE}
+
+head(tokens %>%
+  count(word,sort = TRUE))
+```
+
+```{r message=FALSE, warning=FALSE}
+common_words <- tokens %>%
+  count(word,sort = TRUE) %>%
+  slice(1:10)%>%
+  select(word) %>% unique()
+
+tokens <- tokens %>%
+  filter(!word %in% common_words$word)
+
+kable(head(tokens)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left",
+                fixed_thead = T)
+```
+
+### Remove stop words
+* Get the stopwords from the get_stopwords() function 
+* Remove the stop words from the cleaned_tokens
+
+```{r message=FALSE, warning=FALSE}
+sw = get_stopwords()
+sw
+
+cleaned_tokens <- tokens %>%
+  filter(!word %in% sw$word)
+
+kable(head(cleaned_tokens)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left",
+                fixed_thead = T)
+```
+### Remove numbers
+* Get the numbers from cleaned_tokens and then remove them.
+```{r message=FALSE, warning=FALSE}
+nums <- cleaned_tokens %>%
+  filter(str_detect(word, "^[0-9]")) %>%
+  select(word) %>% unique()
+
+nums
+
+cleaned_tokens <- cleaned_tokens %>%
+  filter(!word %in% nums$word)
+
+kable(head(cleaned_tokens)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left",
+                fixed_thead = T)
+```
+
+* Almost 30K words are present in cleaned_tokens
+
+```{r message=FALSE, warning=FALSE}
+length(unique(cleaned_tokens$word))
+```
+
+### Plot 5: Plotting the Word Frequency
+* Many of these words appear rarely and so we need to remove these rare words  
+* Plotting it in a bar graph  
+
+```{r message=FALSE, warning=FALSE}
+cleaned_tokens %>%
+  count(word, sort = T) %>%
+  rename(word_freq = n) %>%
+  ggplot(aes(x=word_freq)) +
+  geom_histogram(aes(y=..count..), color="black", fill="blue", alpha=0.3) +
+  scale_x_continuous(breaks=c(0:5,10,100,500,10e3), trans="log1p",
+                     expand=c(0,0)) +
+  scale_y_continuous(breaks=c(0,100,1000,5e3,10e3,5e4,10e4,4e4),
+                     expand=c(0,0)) +
+  labs(title="Word Frequency Plot", 
+       x = "Word Frequency",
+       y = "Count")+
+  theme_bw()
+```
+
+### Remove rare words
+* It makes sense to remove rare words to improve the performance of text analytics  
+* Removing words that have less than 10 appearances in this collection  
+
+```{r message=FALSE, warning=FALSE}
+rare <- cleaned_tokens %>%
+  count(word) %>%
+  filter(n<10) %>%
+  select(word) %>% 
+  unique()
+rare
+
+cleaned_tokens <- cleaned_tokens %>%
+  filter(!word %in% rare$word)
+
+kable(head(cleaned_tokens)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left",
+                fixed_thead = T)
+```
+
+* After removing the rare words, we are left with 4155 unique words
+
+```{r message=FALSE, warning=FALSE}
+length(unique(cleaned_tokens$word))
+```
+
+### Plot 6: Wordcloud of common words  
+* Plot 100 most common words  
+* Words like customer 'depression','help', 'mental', 'anxiety', 'talk', 'suicide', 'racism' appear in the wordcloud
+
+```{r message=FALSE, warning=FALSE}
+# define a nice color palette
+pal <- brewer.pal(8,"Dark2")
+
+cleaned_tokens %>%
+  count(word) %>%
+  with(wordcloud(word, n, random.order = FALSE, max.words = 100, colors=pal))
+```
+
+### Perform sentiment analysis
+* Performed based on a lexicon of sentiment keywords    
+* The nrc lexicon categorizes words in a binary fashion (“yes”/“no”) into categories of positive, negative, anger, anticipation, disgust, fear, joy, sadness, surprise, and trust  
+* The bing lexicon categorizes words in a binary fashion into positive and negative categories  
+* The AFINN lexicon assigns words with a score that runs between -5 and 5, with negative scores indicating negative sentiment and positive scores indicating positive sentiment  
+* All three of these lexicons are based on unigrams, i.e., single words  
+
+```{r message=FALSE, warning=FALSE}
+sent_reviews = cleaned_tokens %>%
+  left_join(get_sentiments("nrc")) %>%
+  rename(nrc = sentiment) %>%
+  left_join(get_sentiments("bing")) %>%
+  rename(bing = sentiment) %>%
+  left_join(get_sentiments("afinn")) %>%
+  rename(afinn = value)
+
+kable(head(sent_reviews %>% 
+  filter(nrc != "NA" | bing != "NA" | afinn != "NA") %>%
+  select(-c(country, country_code, user_id, created_at)))) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left",
+                fixed_thead = T)
+
+```
+
+### Most common positive and negative words
+* Getting the common positive and negative words using bing lexicon
+
+```{r message=FALSE, warning=FALSE}
+bing_word_counts <- sent_reviews %>%
+  filter(!is.na(bing)) %>%
+  count(word, bing, sort = TRUE)
+
+kable(head(bing_word_counts)) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F, position = "left",
+                fixed_thead = T)
+```
+
+### Plot 7: Comparison wordcloud of positive and negative sentiments  
+* Words like 'lied', 'annoying', 'awful', 'angry' appear in the negative side of the comparison wordcloud 
+* Words like 'accurate', 'amazing', 'advantage' appear in the positive side of comparison wordcloud  
+
+```{r message=FALSE, warning=FALSE}
+
+
+bing_word_counts %>%
+  inner_join(get_sentiments("bing")) %>%
+  count(word, sentiment, sort = TRUE) %>%
+  acast(word ~ sentiment, value.var = "n", fill = 0) %>%
+  comparison.cloud(scale =c(1.5,0.25),
+                   max.words = 50,
+                   colors = c("gray20", "gray80")
+                   )
+
+
+```
+
+### Plot8: Sentiment by Words
+
+* Words and their contibution to sentiment  
+* Words like 'good','thank','love' appear as positive sentiment words  
+* Words like 'broken', 'problem', 'horrible' appear as negative words  
+* We can also see that negative sentiment words are more in number  
+
+```{r message=FALSE, warning=FALSE}
+bing_word_counts %>%
+  filter(n > 500) %>%
+  mutate(n = ifelse(bing == "negative", -n, n)) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = bing)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Sentiment by Words",
+    y = "Contribution to sentiment")
+```
+
+### Plot 9: Sentiment by Emotions
+* The most common emotions for this dataset are positive, negative, anticipation and trust.
+
+```{r message=FALSE, warning=FALSE}
+sent_reviews %>%
+  filter(!is.na(nrc)) %>%
+  ggplot(.,aes(x=nrc)) +
+  geom_bar()+
+  theme_economist()+
+  labs(title = "Sentiment by Emotions",
+       x = "Emotions",
+       y = "Count")
+```
+
+
+#No. of tweets regarding mental health in a minute  
+```{r message=FALSE, warning=FALSE}
+  tweets_df %>%
+    # UCT time in hh:mm format
+    mutate(created_at=substr(created_at, 12, 16))   %>%
+    count(created_at) %>%
+    slice(1:60) %>%
+    ggplot(aes(x=as.numeric(as.factor(created_at)), y=n, group=1)) +
+    geom_line(size=1, show.legend=FALSE) +
+    labs(x="UCT time (hh:mm)", y="Number of Tweets") + 
+    theme_classic()
+```
+# Identifyings countries with most number of tweets related to suicide
+
+```{r message=FALSE, warning=FALSE}
+pal <- brewer.pal(8,"Set1")
+sent_reviews %>%
+  filter(country!='NA')%>%select((country))%>%
+  count(country) %>%
+  with(wordcloud(country, n, random.order = FALSE, max.words = 100, colors=pal))
+```
+
+
+## Findings , Proposed Solution and Scope of Imorovement:
+**Findings**
+* On an average, almost 30 tweets are submitted every single second with hashtags related to mental health issues.  
+* We found the most common hashtag of them all is related to Suicide and Depression.  
+* Common Negative sentiments for such discussion were 'miserable', 'desperate', 'distress', 'rape', 'pain' etc.  
+* Most tweets came from the areas of United States, United Kingdom and Canada.  
+  
+**Proposed Solution**  
+* Identify these tweets and provide them with support hotlines numbers immediately.
+  
+**Scope of improvement**  
+* Identifying users who are constantly posting about these negative sentiments and provide them with different help options like anonymous groups, help and support group information, doctors/therapist information privately in their emails. 
+* This might encourage the user to seek the help that they might require.
